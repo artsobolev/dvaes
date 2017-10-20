@@ -38,15 +38,15 @@ if __name__ == "__main__":
         help='Batch size')
 
     argparser.add_argument(
-        '--epochs', type=int, default=10,
+        '--epochs', type=int, default=100,
         help='Number of epochs')
 
     argparser.add_argument(
-        '--evaluate_every', type=int, default=100,
+        '--evaluate_every', type=int, default=5,
         help='Evaluate model every X batches')
 
     argparser.add_argument(
-        '--experiment_path', type=str, default='model.ckpt',
+        '--experiment_path', type=str, default='experiments/tmp/',
         help='Path to save experiment\'s data')
 
     args = argparser.parse_args()

@@ -2,6 +2,7 @@ import tensorflow as tf
 
 from abstract_dvae import AbstractDVAE
 
+
 class AsymptoticallyReparametrisedDVAE(AbstractDVAE):
     def __init__(self, *args, **kwargs):
         AbstractDVAE.__init__(self, *args, **kwargs)

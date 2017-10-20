@@ -118,11 +118,7 @@ class AbstractDVAE:
             elbos = reconstruction - kl
             multisample_elbo = tf.reduce_logsumexp(elbos, axis=1) - np.log(K)
 
-            multisample_elbo_mean, multisample_elbo_var = tf.nn.moments(multisample_elbo, axes=[0])
-            summaries = model_utils.summary_mean_and_std('multisample_elbo',
-                                                         multisample_elbo_mean, multisample_elbo_var ** 0.5)
-
-        return tf.reduce_sum(multisample_elbo, axis=0), summaries
+        return tf.reduce_sum(multisample_elbo, axis=0)
     
     def decode(self, z, deterministic=False):
         decoder = self.discrete_decoder_
