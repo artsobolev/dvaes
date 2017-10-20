@@ -46,8 +46,8 @@ if __name__ == "__main__":
         help='Evaluate model every X batches')
 
     argparser.add_argument(
-        '--model_path', type=str, default='model.ckpt',
-        help='Path to save trained model')
+        '--experiment_path', type=str, default='model.ckpt',
+        help='Path to save experiment\'s data')
 
     args = argparser.parse_args()
 
@@ -62,6 +62,6 @@ if __name__ == "__main__":
 
         utils.train(dvae, dataset.train.images, dataset.validation.images, learning_rate=args.learning_rate,
                     epochs=args.epochs, batch_size=args.batch_size, evaluate_every=args.evaluate_every,
-                    summaries_path='./experiment/', sess=sess)
+                    summaries_path=args.experiment_path, sess=sess)
 
-        save_path = tf.train.Saver().save(sess, args.model_path)
+        save_path = tf.train.Saver().save(sess, args.experiment_path + "/model")
