@@ -35,12 +35,12 @@ def train(dvae, X_train, X_val, learning_rate=1.0, epochs=10, batch_size=100,
 
         if epoch % evaluate_every == 0:
             start = time.time()
-            elbos, summary = dvae.evaluate_multisample(X_val)
+            multisample_elbos, summary = dvae.evaluate_multisample(X_val)
             eval_time = time.time() - start
             train_writer.add_summary(summary, tf.train.global_step(sess, global_step))
 
-            ks = sorted(dvae.multisample_elbos_.keys())
-            elbos_str = ["k={}: {:.3f}".format(k, elbo) for k, elbo in zip(ks, elbos)]
+            ks = sorted(multisample_elbos.keys())
+            elbos_str = ["k={}: {:.3f}".format(k, multisample_elbos[k]) for k in ks]
             print "\rEpoch {}: ELBOs: {} (eval. time = {:.2f})".format(epoch, ", ".join(elbos_str), eval_time)
             
         for batch_id in range(batches):
