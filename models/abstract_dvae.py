@@ -105,10 +105,10 @@ class AbstractDVAE:
     def _build_multisample_elbo(self, x, K, reuse):
         encoder_logits = self._build_encoder_logits(x, reuse=reuse)
         encoder = self._build_encoder(encoder_logits)  # N x C
-        code = tf.to_float(encoder.sample(K))  # N x K x C
+        code = tf.to_float(encoder.sample(K))  # K x N x C
 
         decoder_logits = self._build_decoder_logits(code, reuse=reuse)
-        decoder = self._build_decoder(decoder_logits) # N x K x M
+        decoder = self._build_decoder(decoder_logits) # K x N x M
 
         prior = self._build_prior()
 
@@ -116,7 +116,7 @@ class AbstractDVAE:
             reconstruction = tf.reduce_sum(decoder.log_prob(x), axis=2)
             kl = tf.reduce_sum(encoder.log_prob(code) - prior.log_prob(code), axis=2)
             elbos = reconstruction - kl
-            multisample_elbo = tf.reduce_logsumexp(elbos, axis=1) - np.log(K)
+            multisample_elbo = tf.reduce_logsumexp(elbos, axis=0) - np.log(K)
 
         return tf.reduce_sum(multisample_elbo, axis=0)
     
@@ -148,7 +148,7 @@ class AbstractDVAE:
     def _to_signed_binary(X):
         return 2 * X - 1
 
-    def evaluate_multisample(self, X, batch_size=10):
+    def evaluate_multisample(self, X, batch_size=100):
         elbos = {k: self._batch_evaluate(elbo, self.input_, X, batch_size=batch_size)
                  for k, elbo in self._multisample_elbos.iteritems()}
 
