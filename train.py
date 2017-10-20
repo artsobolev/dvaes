@@ -42,8 +42,12 @@ if __name__ == "__main__":
         help='Number of epochs')
 
     argparser.add_argument(
-        '--evaluate_every', type=int, default=1000,
-        help='Evaluate model every X epochs')
+        '--evaluate_every', type=int, default=100,
+        help='Evaluate model every X batches')
+
+    argparser.add_argument(
+        '--model_path', type=str, default='model.ckpt',
+        help='Path to save trained model')
 
     args = argparser.parse_args()
 
@@ -53,9 +57,11 @@ if __name__ == "__main__":
 
     dataset = utils.get_mnist_dataset()
 
-    with tf.Session():
-        dvae = model_class(args.code_size, p=args.prior_proba, lam=args.lam)
+    with tf.Session() as sess:
+        dvae = model_class(args.code_size, 28*28, prior_p=args.prior_proba, lam=args.lam)
 
         utils.train(dvae, dataset.train.images, dataset.validation.images, learning_rate=args.learning_rate,
                     epochs=args.epochs, batch_size=args.batch_size, evaluate_every=args.evaluate_every,
-                    summaries_path='./experiment/')
+                    summaries_path='./experiment/', sess=sess)
+
+        save_path = tf.train.Saver().save(sess, args.model_path)

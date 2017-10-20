@@ -1,43 +1,48 @@
 import tensorflow as tf
 import numpy as np
-import tensorflow.contrib.layers
 
 import model_utils
 
-log_sigmoid = lambda x: -tf.nn.softplus(-x)
+
+def log_sigmoid(x):
+    return -tf.nn.softplus(-x)
+
 
 class AbstractDVAE:
-    def __init__(self, code_size, p, lam, multisample_ks=(100, 1000, 10000)):
+    def __init__(self, code_size, input_size, prior_p, lam, multisample_ks=(100, 1000, 10000)):
         self.code_size = code_size
-        self.p = p
+        self.input_size = input_size
+        self.prior_p = prior_p
         self.lam = lam
         
-        self.input_ = tf.placeholder(tf.float32, shape=(None, 28 * 28))
+        self.input_ = tf.placeholder(tf.float32, shape=(None, self.input_size), name='Input')
 
-        self.relaxed_encoder_, self.relaxed_code_, \
-        self.relaxed_decoder_, self.relaxed_loss_, self.relaxed_summaries_ = self._build(self.input_, relaxed=True)
+        self.relaxed_encoder_, self.relaxed_code_,\
+        self.relaxed_decoder_, self.relaxed_loss_, self.relaxed_summaries_ = self._build(self.input_,
+                                                                                         reuse=False, relaxed=True)
 
         self.discrete_encoder_, self.discrete_code_, \
-        self.discrete_decoder_, self.discrete_loss_, self.discrete_summaries_ = self._build(self.input_, relaxed=False)
+        self.discrete_decoder_, self.discrete_loss_, self.discrete_summaries_ = self._build(self.input_,
+                                                                                            reuse=True, relaxed=False)
 
         self.summaries_op_ = tf.summary.merge(self.relaxed_summaries_ + self.discrete_summaries_)
 
-        multisample_elbos, multisample_summaries = zip(*[self._build_multisample_elbo(self.input_, k)
+        multisample_elbos, multisample_summaries = zip(*[self._build_multisample_elbo(self.input_, k, reuse=True)
                                                          for k in multisample_ks])
         self.multisample_elbos_ = dict(zip(multisample_ks, multisample_elbos))
         self.multisample_summaries_op_ = tf.summary.merge(multisample_summaries)
     
-    def _build_encoder_logits(self, eh0):
-        with tf.name_scope('encoder'):        
+    def _build_encoder_logits(self, eh0, reuse):
+        with tf.variable_scope('encoder', reuse=reuse):
             eh1 = tf.layers.dense(eh0, 200, activation=tf.nn.tanh)
             eh2 = tf.layers.dense(eh1, self.code_size, activation=None)
 
         return eh2 
 
-    def _build_decoder_logits(self, dh0):
-        with tf.name_scope('decoder'):
+    def _build_decoder_logits(self, dh0, reuse):
+        with tf.variable_scope('decoder', reuse=reuse):
             dh1 = tf.layers.dense(dh0, 200, activation=tf.nn.tanh)
-            dh2 = tf.layers.dense(dh1, 28*28, activation=None)
+            dh2 = tf.layers.dense(dh1, self.input_size, activation=None)
         
         return dh2 
     
@@ -54,16 +59,16 @@ class AbstractDVAE:
     
     def _build_prior(self):
         with tf.name_scope('prior'):
-            return tf.contrib.distributions.Bernoulli(probs=self.p)
+            return tf.contrib.distributions.Bernoulli(probs=self.prior_p)
 
     def _build_loss(self, encoder_logits, reconstruction, scope_name):
         summaries = []
         with tf.name_scope('loss'):
             q = tf.sigmoid(encoder_logits)
-            q_neg = tf.sigmoid(encoder_logits)
+            q_neg = tf.sigmoid(-encoder_logits)
 
-            kl = q * (log_sigmoid(encoder_logits) - tf.log(self.p)) \
-                 + q_neg * (log_sigmoid(-encoder_logits) - tf.log(1 - self.p))
+            kl = q * (log_sigmoid(encoder_logits) - tf.log(self.prior_p)) \
+                 + q_neg * (log_sigmoid(-encoder_logits) - tf.log(1 - self.prior_p))
             kl_per_object = tf.reduce_sum(kl, axis=1)
             kl_mean, kl_var = tf.nn.moments(kl_per_object, axes=[0])
 
@@ -71,34 +76,39 @@ class AbstractDVAE:
             elbo_per_object = reconstruction_per_object - kl_per_object
             elbo_mean, elbo_var = tf.nn.moments(elbo_per_object, axes=[0])
 
-            reg_losses = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
-            regularizer = tf.contrib.layers.apply_regularization(tf.contrib.layers.l2_regularizer(self.lam), reg_losses)
-            loss = -elbo_mean + regularizer
+            regularization = self._get_regularization()
+            loss = -elbo_mean + regularization
 
         with tf.name_scope(scope_name):
             summaries.append(tf.summary.scalar('loss', loss))
+            summaries.append(tf.summary.scalar('regularization', regularization))
             summaries += model_utils.summary_mean_and_std('elbo', elbo_mean, elbo_var ** 0.5)
             summaries += model_utils.summary_mean_and_std('kl', kl_mean, kl_var ** 0.5)
 
         return loss, summaries
 
-    def _build(self, x, relaxed=False):
-        encoder_logits = self._build_encoder_logits(x)
+    def _get_regularization(self):
+        regularizables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+        regularizer = tf.contrib.layers.l2_regularizer(self.lam)
+        return tf.contrib.layers.apply_regularization(regularizer, regularizables)
+
+    def _build(self, x, reuse, relaxed=False):
+        encoder_logits = self._build_encoder_logits(x, reuse=reuse)
         encoder = (self._build_relaxed_encoder if relaxed else self._build_encoder)(encoder_logits)
         code = tf.to_float(encoder.sample())
 
-        decoder_logits = self._build_decoder_logits(code)
+        decoder_logits = self._build_decoder_logits(code, reuse=reuse)
         decoder = self._build_decoder(decoder_logits)
 
         loss, summaries = self._build_loss(encoder_logits, decoder.log_prob(x), 'relaxed' if relaxed else 'discrete')
         return encoder, code, decoder, loss, summaries
 
-    def _build_multisample_elbo(self, x, K):
-        encoder_logits = self._build_encoder_logits(x)
+    def _build_multisample_elbo(self, x, K, reuse):
+        encoder_logits = self._build_encoder_logits(x, reuse=reuse)
         encoder = self._build_encoder(encoder_logits) # N x C
         code = tf.to_float(encoder.sample(K)) # N x K x C
 
-        decoder_logits = self._build_decoder_logits(code)
+        decoder_logits = self._build_decoder_logits(code, reuse=reuse)
         decoder = self._build_decoder(decoder_logits) # N x K x M
 
         prior = self._build_prior()
