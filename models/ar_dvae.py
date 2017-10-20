@@ -10,4 +10,4 @@ class AsymptoticallyReparametrisedDVAE(AbstractDVAE):
         with tf.name_scope('encoder'):        
             q = tf.sigmoid(logits)
             q_neg = tf.sigmoid(-logits)
-            return tf.contrib.distributions.Normal(2 * q - 1, (4 * q * q_neg) ** 0.5)
+            return tf.contrib.distributions.Normal(q, (q * q_neg) ** 0.5)

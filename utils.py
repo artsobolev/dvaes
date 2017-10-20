@@ -53,11 +53,8 @@ def train(dvae, X_train, X_val, learning_rate=1.0, epochs=10, batch_size=100,
             train_writer.add_summary(summary, tf.train.global_step(sess, global_step))
 
             if batch_id % evaluate_every == 0:
-                val_indices = np.random.choice(len(X_val), 20, replace=False)
-
                 start = time.time()
-                elbos, summary = sess.run([dvae.multisample_elbos_.values(), dvae.multisample_summaries_op_],
-                                          feed_dict={dvae.input_: X_val[val_indices]})
+                elbos, summary = dvae.evaluate_multisample(X_val)
                 eval_time = time.time() - start
                 train_writer.add_summary(summary, tf.train.global_step(sess, global_step))
 

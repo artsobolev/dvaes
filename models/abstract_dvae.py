@@ -27,19 +27,18 @@ class AbstractDVAE:
 
         self.summaries_op_ = tf.summary.merge(self.relaxed_summaries_ + self.discrete_summaries_)
 
-        multisample_elbos, multisample_summaries = zip(*[self._build_multisample_elbo(self.input_, k, reuse=True)
-                                                         for k in multisample_ks])
-        self.multisample_elbos_ = dict(zip(multisample_ks, multisample_elbos))
-        self.multisample_summaries_op_ = tf.summary.merge(multisample_summaries)
-    
-    def _build_encoder_logits(self, eh0, reuse):
+        self._multisample_elbos = {k: self._build_multisample_elbo(self.input_, k, reuse=True) for k in multisample_ks}
+
+    def _build_encoder_logits(self, input, reuse):
+        eh0 = self._to_signed_binary(input)
         with tf.variable_scope('encoder', reuse=reuse):
             eh1 = tf.layers.dense(eh0, 200, activation=tf.nn.tanh)
             eh2 = tf.layers.dense(eh1, self.code_size, activation=None)
 
         return eh2 
 
-    def _build_decoder_logits(self, dh0, reuse):
+    def _build_decoder_logits(self, code, reuse):
+        dh0 = self._to_signed_binary(code)
         with tf.variable_scope('decoder', reuse=reuse):
             dh1 = tf.layers.dense(dh0, 200, activation=tf.nn.tanh)
             dh2 = tf.layers.dense(dh1, self.input_size, activation=None)
@@ -105,8 +104,8 @@ class AbstractDVAE:
 
     def _build_multisample_elbo(self, x, K, reuse):
         encoder_logits = self._build_encoder_logits(x, reuse=reuse)
-        encoder = self._build_encoder(encoder_logits) # N x C
-        code = tf.to_float(encoder.sample(K)) # N x K x C
+        encoder = self._build_encoder(encoder_logits)  # N x C
+        code = tf.to_float(encoder.sample(K))  # N x K x C
 
         decoder_logits = self._build_decoder_logits(code, reuse=reuse)
         decoder = self._build_decoder(decoder_logits) # N x K x M
@@ -123,14 +122,43 @@ class AbstractDVAE:
             summaries = model_utils.summary_mean_and_std('multisample_elbo',
                                                          multisample_elbo_mean, multisample_elbo_var ** 0.5)
 
-        return multisample_elbo_mean, summaries
+        return tf.reduce_sum(multisample_elbo, axis=0), summaries
     
     def decode(self, z, deterministic=False):
         decoder = self.discrete_decoder_
-        ret = decoder.mean() if deterministic else decoder.sample()
-        return ret.eval(feed_dict={self.discrete_code_: z})
+        reconstruction = decoder.mean() if deterministic else decoder.sample()
+        return reconstruction.eval(feed_dict={self.discrete_code_: z})
 
     def encode(self, x, deterministic=False):
         encoder = self.discrete_encoder_
-        ret = encoder.mean() if deterministic else encoder.sample()
-        return ret.eval(feed_dict={self.input_: x})
+        code = encoder.mean() if deterministic else encoder.sample()
+        return code.eval(feed_dict={self.input_: x})
+
+    def _batch_evaluate(self, node, input, X, batch_size):
+        n = len(X)
+        batches = (n + batch_size - 1) / batch_size
+
+        res = 0
+        for batch_id in range(batches):
+            begin = batch_id * batch_size
+            end = begin + batch_size
+            X_batch = X[begin:end]
+
+            res += node.eval(feed_dict={input: X_batch})
+
+        return res / n
+
+    @staticmethod
+    def _to_signed_binary(X):
+        return 2 * X - 1
+
+    def evaluate_multisample(self, X, batch_size=10):
+        elbos = {k: self._batch_evaluate(elbo, self.input_, X, batch_size=batch_size)
+                 for k, elbo in self._multisample_elbos.iteritems()}
+
+        summary = tf.Summary(value=[
+            tf.Summary.Value(tag="{}-sample ELBO".format(k), simple_value=elbo)
+            for k, elbo in elbos.iteritems()
+        ])
+
+        return elbos, summary
