@@ -148,7 +148,7 @@ class AbstractDVAE:
     def _to_signed_binary(X):
         return 2 * X - 1
 
-    def evaluate_multisample(self, X, batch_size=100):
+    def evaluate_multisample(self, X, batch_size=50):
         elbos = {k: self._batch_evaluate(elbo, self.input_, X, batch_size=batch_size)
                  for k, elbo in self._multisample_elbos.iteritems()}
 

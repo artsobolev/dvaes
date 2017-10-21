@@ -34,7 +34,7 @@ if __name__ == "__main__":
         help='Regularisation coefficient')
 
     argparser.add_argument(
-        '--batch_size', type=int, default=32,
+        '--batch_size', type=int, default=50,
         help='Batch size')
 
     argparser.add_argument(
@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
     dataset = utils.get_mnist_dataset()
 
-    with tf.Session() as sess:
+    with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
         dvae = model_class(args.code_size, 28*28, prior_p=args.prior_proba, lam=args.lam)
 
         utils.train(dvae, dataset.train.images, dataset.validation.images, learning_rate=args.learning_rate,

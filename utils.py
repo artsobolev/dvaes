@@ -15,7 +15,7 @@ def train(dvae, X_train, X_val, learning_rate=1.0, epochs=10, batch_size=100,
     if sess is None:
         sess = tf.get_default_session()
 
-    global_step = tf.Variable(0, name='global_step', trainable=False)
+    global_step = tf.train.create_global_step()
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
     train_op = optimizer.minimize(dvae.relaxed_loss_, global_step=global_step)
 
@@ -61,3 +61,5 @@ def train(dvae, X_train, X_val, learning_rate=1.0, epochs=10, batch_size=100,
             sys.stdout.flush()
 
             train_writer.add_summary(summary, tf.train.global_step(sess, global_step))
+
+        train_writer.flush()
