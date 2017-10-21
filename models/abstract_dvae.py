@@ -33,20 +33,22 @@ class AbstractDVAE:
         self._multisample_elbos = {k: self._build_multisample_elbo(self.input_, k, reuse=True) for k in multisample_ks}
 
     def _build_encoder_logits(self, input, reuse):
-        eh0 = self._to_signed_binary(input)
+        net = self._to_signed_binary(input)
         with tf.variable_scope('encoder', reuse=reuse):
-            eh1 = tf.layers.dense(eh0, 200, activation=tf.nn.tanh)
-            eh2 = tf.layers.dense(eh1, self.code_size, activation=None)
+            net = tf.layers.dense(net, 200, activation=tf.nn.tanh)
+            net = tf.layers.dense(net, 200, activation=tf.nn.tanh)
+            net = tf.layers.dense(net, self.code_size, activation=None)
 
-        return eh2
+        return net
 
     def _build_decoder_logits(self, code, reuse):
-        dh0 = self._to_signed_binary(code)
+        net = self._to_signed_binary(code)
         with tf.variable_scope('decoder', reuse=reuse):
-            dh1 = tf.layers.dense(dh0, 200, activation=tf.nn.tanh)
-            dh2 = tf.layers.dense(dh1, self.input_size, activation=None)
+            net = tf.layers.dense(net, 200, activation=tf.nn.tanh)
+            net = tf.layers.dense(net, 200, activation=tf.nn.tanh)
+            net = tf.layers.dense(net, self.input_size, activation=None)
         
-        return dh2 
+        return net
     
     def _build_decoder(self, logits):
         with tf.name_scope('decoder'):
