@@ -1,2 +1,2 @@
 from .ar_dvae import AsymptoticallyReparametrisedDVAE
-from .relaxed_dvae import ConcretelyRelaxedDVAE
+from .relaxed_dvae import ConcretelyRelaxedDVAE, GeneralizedRelaxedDVAE

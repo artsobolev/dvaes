@@ -10,8 +10,8 @@ def get_mnist_dataset():
     return input_data.read_data_sets('MNIST_data', one_hot=True)
 
 
-def train(dvae, X_train, X_val, learning_rate=1.0, epochs=10, batch_size=100,
-          evaluate_every=10, shuffle=True, summaries_path='./experiment/', sess=None):
+def train(dvae, X_train, X_val, learning_rate=1.0, epochs=10, batch_size=100, evaluate_every=10, shuffle=True,
+          summaries_path='./experiment/', subset_validation=1000*1000*1000, sess=None):
     if sess is None:
         sess = tf.get_default_session()
 
@@ -35,7 +35,7 @@ def train(dvae, X_train, X_val, learning_rate=1.0, epochs=10, batch_size=100,
 
         if epoch % evaluate_every == 0:
             start = time.time()
-            multisample_elbos, summary = dvae.evaluate_multisample(X_val)
+            multisample_elbos, summary = dvae.evaluate_multisample(X_val[:subset_validation])
             eval_time = time.time() - start
             train_writer.add_summary(summary, tf.train.global_step(sess, global_step))
 
@@ -57,7 +57,7 @@ def train(dvae, X_train, X_val, learning_rate=1.0, epochs=10, batch_size=100,
 
             avg_run_time = mu * execution_time + (1 - mu) * avg_run_time
             mu = 0.9
-            sys.stdout.write("\rEpoch {}.{}: Time per batch: {:.2f}s".format(epoch, batch_id, avg_run_time) + " " * 30)
+            sys.stdout.write("\rEpoch {}.{}: Time per batch: {:.4f}s".format(epoch, batch_id, avg_run_time) + " " * 30)
             sys.stdout.flush()
 
             train_writer.add_summary(summary, tf.train.global_step(sess, global_step))

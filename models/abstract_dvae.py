@@ -9,13 +9,16 @@ def log_sigmoid(x):
 
 
 class AbstractDVAE:
-    def __init__(self, code_size, input_size, prior_p, lam, multisample_ks=(100, 1000, 10000)):
+    def __init__(self, code_size, input_size, prior_p, lam, multisample_ks=(100, 1000, 10000), *args, **kwargs):
         self.code_size = code_size
         self.input_size = input_size
         self.prior_p = prior_p
         self.lam = lam
-        
-        self.input_ = tf.placeholder(tf.float32, shape=(None, self.input_size), name='Input')
+        self.batch_size = kwargs.get('batch_size')
+
+        # Can't use dynamic-sized batching since some Normal distribution's
+        # quantile function can't work with it
+        self.input_ = tf.placeholder(tf.float32, shape=(self.batch_size, self.input_size), name='Input')
 
         self.relaxed_encoder_, self.relaxed_code_,\
         self.relaxed_decoder_, self.relaxed_loss_, self.relaxed_summaries_ = self._build(self.input_,
@@ -148,8 +151,8 @@ class AbstractDVAE:
     def _to_signed_binary(X):
         return 2 * X - 1
 
-    def evaluate_multisample(self, X, batch_size=50):
-        elbos = {k: self._batch_evaluate(elbo, self.input_, X, batch_size=batch_size)
+    def evaluate_multisample(self, X):
+        elbos = {k: self._batch_evaluate(elbo, self.input_, X, batch_size=self.batch_size)
                  for k, elbo in self._multisample_elbos.iteritems()}
 
         summary = tf.Summary(value=[

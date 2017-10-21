@@ -14,8 +14,9 @@ if __name__ == "__main__":
 
     argparser = argparse.ArgumentParser()
     argparser.add_argument(
-        '--model',
-        help='Model name. Possible values are: {}'.format(", ".join(available_models)))
+        'model',
+        choices=available_models,
+        help='Model class.')
 
     argparser.add_argument(
         '--code_size', type=int, default=200,
@@ -34,6 +35,15 @@ if __name__ == "__main__":
         help='Regularisation coefficient')
 
     argparser.add_argument(
+        '--tau', type=float, default=1.0,
+        help='Relaxation temperature')
+
+    argparser.add_argument(
+        '--relaxation_distribution', type=str, default='Uniform',
+        choices=models.GeneralizedRelaxedDVAE.FACTORIES.keys(),
+        help='Underlying distribution for relaxation')
+
+    argparser.add_argument(
         '--batch_size', type=int, default=50,
         help='Batch size')
 
@@ -49,6 +59,11 @@ if __name__ == "__main__":
         '--experiment_path', type=str, default='experiments/tmp/',
         help='Path to save experiment\'s data')
 
+    argparser.add_argument(
+        '--subset_validation', type=int, default=1000*1000*1000,
+        help='Number of validation samples to compute marginal '
+             'log-likelihood on.')
+
     args = argparser.parse_args()
 
     if args.model not in available_models:
@@ -58,10 +73,12 @@ if __name__ == "__main__":
     dataset = utils.get_mnist_dataset()
 
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
-        dvae = model_class(args.code_size, 28*28, prior_p=args.prior_proba, lam=args.lam)
+        dvae = model_class(code_size=args.code_size, input_size=28*28, prior_p=args.prior_proba, lam=args.lam,
+                           tau=args.tau, relaxation_distribution=args.relaxation_distribution,
+                           batch_size=args.batch_size)
 
         utils.train(dvae, dataset.train.images, dataset.validation.images, learning_rate=args.learning_rate,
                     epochs=args.epochs, batch_size=args.batch_size, evaluate_every=args.evaluate_every,
-                    summaries_path=args.experiment_path, sess=sess)
+                    summaries_path=args.experiment_path, sess=sess, subset_validation=args.subset_validation)
 
         save_path = tf.train.Saver().save(sess, args.experiment_path + "/model")

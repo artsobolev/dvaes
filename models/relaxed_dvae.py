@@ -11,29 +11,33 @@ class ConcretelyRelaxedDVAE(AbstractDVAE):
     
     def _build_relaxed_encoder(self, logits):
         with tf.name_scope('encoder'):
-            logistic = tf.contrib.distributions.Logistic(loc=logits, scale=1.)
-            transformation = tf.contrib.distributions.bijectors.Chain([
-                tf.contrib.distributions.bijectors.Affine(scale_identity_multiplier=1.0 / self.tau_),
-                tf.contrib.distributions.bijectors.Sigmoid()
-            ])
+            logistic = tf.contrib.distributions.Logistic(loc=logits / self.tau_, scale=1. / self.tau_)
+            transformation = tf.contrib.distributions.bijectors.Sigmoid()
             return tf.contrib.distributions.TransformedDistribution(logistic, bijector=transformation)
 
 
 class GeneralizedRelaxedDVAE(AbstractDVAE):
-    def __init__(self, distribution_factory, tau=1.0, *args, **kwargs):
+    FACTORIES = {
+        'Uniform': lambda shape: tf.distributions.Uniform(low=tf.zeros(shape), high=tf.ones(shape)),
+        'Laplace': lambda shape: tf.distributions.Laplace(loc=tf.zeros(shape), scale=tf.ones(shape)),
+        'Normal': lambda shape: tf.distributions.Normal(loc=tf.zeros(shape), scale=tf.ones(shape)),
+    }
+
+    def __init__(self, relaxation_distribution, *args, **kwargs):
+        self.tau_ = kwargs.get('tau', 1.0)
+        self.distribution_factory_ = self.FACTORIES[relaxation_distribution]
+
         AbstractDVAE.__init__(self, *args, **kwargs)
-        self.tau_ = tau
-        self.distribution_factory_ = distribution_factory
 
     def _build_relaxed_encoder(self, logits):
         with tf.name_scope('encoder'):
-            distribution = self.distribution_factory_(logits.get_shape())
+            distribution = self.distribution_factory_(tf.shape(logits))
             proba_c = tf.sigmoid(-logits)
 
             # This implements sigmoid(X - inv_cdf(1 - proba))
             transformation = tf.contrib.distributions.bijectors.Chain([
-                tf.contrib.distributions.bijectors.Affine(shift=-distribution.quantile(proba_c)),
+                tf.contrib.distributions.bijectors.Sigmoid(),
                 tf.contrib.distributions.bijectors.Affine(scale_identity_multiplier=1.0 / self.tau_),
-                tf.contrib.distributions.bijectors.Sigmoid()
+                tf.contrib.distributions.bijectors.Affine(shift=-distribution.quantile(proba_c)),
             ])
             return tf.contrib.distributions.TransformedDistribution(distribution, bijector=transformation)
