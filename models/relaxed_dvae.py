@@ -5,13 +5,13 @@ from abstract_dvae import AbstractDVAE
 
 class ConcretelyRelaxedDVAE(AbstractDVAE):
     def __init__(self, *args, **kwargs):
-        self.tau_ = kwargs.get('tau', 1.0)
+        self.tau = kwargs.get('tau', 1.0)
 
         AbstractDVAE.__init__(self, *args, **kwargs)
     
     def _build_relaxed_encoder(self, logits):
         with tf.name_scope('encoder'):
-            logistic = tf.contrib.distributions.Logistic(loc=logits / self.tau_, scale=1. / self.tau_)
+            logistic = tf.contrib.distributions.Logistic(loc=logits / self.tau, scale=1. / self.tau)
             transformation = tf.contrib.distributions.bijectors.Sigmoid()
             return tf.contrib.distributions.TransformedDistribution(logistic, bijector=transformation)
 
@@ -24,7 +24,7 @@ class GeneralizedRelaxedDVAE(AbstractDVAE):
     }
 
     def __init__(self, relaxation_distribution, *args, **kwargs):
-        self.tau_ = kwargs.get('tau', 1.0)
+        self.tau = kwargs.get('tau', 1.0)
         self.distribution_factory_ = self.FACTORIES[relaxation_distribution]
 
         AbstractDVAE.__init__(self, *args, **kwargs)
@@ -37,7 +37,7 @@ class GeneralizedRelaxedDVAE(AbstractDVAE):
             # This implements sigmoid(X - inv_cdf(1 - proba))
             transformation = tf.contrib.distributions.bijectors.Chain([
                 tf.contrib.distributions.bijectors.Sigmoid(),
-                tf.contrib.distributions.bijectors.Affine(scale_identity_multiplier=1.0 / self.tau_),
+                tf.contrib.distributions.bijectors.Affine(scale_identity_multiplier=1.0 / self.tau),
                 tf.contrib.distributions.bijectors.Affine(shift=-distribution.quantile(proba_c)),
             ])
             return tf.contrib.distributions.TransformedDistribution(distribution, bijector=transformation)
