@@ -35,7 +35,7 @@ class AbstractDVAE:
             eh1 = tf.layers.dense(eh0, 200, activation=tf.nn.tanh)
             eh2 = tf.layers.dense(eh1, self.code_size, activation=None)
 
-        return eh2 
+        return eh2
 
     def _build_decoder_logits(self, code, reuse):
         dh0 = self._to_signed_binary(code)
