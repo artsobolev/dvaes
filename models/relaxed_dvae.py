@@ -1,5 +1,6 @@
 import tensorflow as tf
 
+import model_utils
 from abstract_dvae import AbstractDVAE
 
 
@@ -17,7 +18,7 @@ class ConcretelyRelaxedDVAE(AbstractDVAE):
 
 
 class GeneralizedRelaxedDVAE(AbstractDVAE):
-    FACTORIES = {
+    DISTRIBUTION_FACTORIES = {
         'Uniform': lambda shape: tf.distributions.Uniform(low=tf.zeros(shape), high=tf.ones(shape)),
         'Laplace': lambda shape: tf.distributions.Laplace(loc=tf.zeros(shape), scale=tf.ones(shape)),
         'Normal': lambda shape: tf.distributions.Normal(loc=tf.zeros(shape), scale=tf.ones(shape)),
@@ -25,7 +26,7 @@ class GeneralizedRelaxedDVAE(AbstractDVAE):
 
     def __init__(self, relaxation_distribution, *args, **kwargs):
         self.tau = kwargs.get('tau', 1.0)
-        self.distribution_factory_ = self.FACTORIES[relaxation_distribution]
+        self.distribution_factory_ = self.DISTRIBUTION_FACTORIES[relaxation_distribution]
 
         AbstractDVAE.__init__(self, *args, **kwargs)
 
@@ -35,9 +36,44 @@ class GeneralizedRelaxedDVAE(AbstractDVAE):
             proba_c = tf.sigmoid(-logits)
 
             # This implements sigmoid(X - inv_cdf(1 - proba))
-            transformation = tf.contrib.distributions.bijectors.Chain([
+            transform = tf.contrib.distributions.bijectors.Chain([
                 tf.contrib.distributions.bijectors.Sigmoid(),
                 tf.contrib.distributions.bijectors.Affine(scale_identity_multiplier=1.0 / self.tau),
                 tf.contrib.distributions.bijectors.Affine(shift=-distribution.quantile(proba_c)),
             ])
-            return tf.contrib.distributions.TransformedDistribution(distribution, bijector=transformation)
+            return tf.contrib.distributions.TransformedDistribution(distribution, bijector=transform)
+
+
+# FIXME: nans T_T
+class NoiseRelaxedDVAE(AbstractDVAE):
+    NOISE_FACTORIES = {
+        'Normal': lambda shape: tf.distributions.Normal(loc=tf.ones(shape), scale=tf.ones(shape)),
+    }
+
+    def __init__(self, noise_distribution, *args, **kwargs):
+        self.tau = kwargs.get('tau', 1.0)
+        self.noise_factory_ = self.NOISE_FACTORIES[noise_distribution]
+
+        AbstractDVAE.__init__(self, *args, **kwargs)
+
+    def _build_relaxed_encoder(self, logits):
+        with tf.name_scope('encoder'):
+            noise_distribution = self.noise_factory_(tf.shape(logits))
+
+            uniform = tf.distributions.Uniform(low=tf.zeros_like(logits), high=tf.ones_like(logits))
+            proba = tf.sigmoid(logits)
+            proba_inv = 1. + tf.exp(-logits)
+            proba_c = tf.sigmoid(-logits)
+
+        def transform(rho):
+            threshold_lo = noise_distribution.cdf(0.0) * proba
+            threshold_hi = threshold_lo + proba_c
+
+            lower_case = noise_distribution.quantile(rho)
+            middle_case = tf.zeros_like(rho)
+            higher_case = noise_distribution.quantile((rho - proba_c) * proba_inv)
+
+            return tf.where(rho < threshold_lo, lower_case,
+                            tf.where(rho < threshold_hi, middle_case, higher_case))
+
+        return model_utils.TransformedSampler(uniform, transform)

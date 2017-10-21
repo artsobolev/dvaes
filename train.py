@@ -40,8 +40,13 @@ if __name__ == "__main__":
 
     argparser.add_argument(
         '--relaxation_distribution', type=str, default='Uniform',
-        choices=models.GeneralizedRelaxedDVAE.FACTORIES.keys(),
-        help='Underlying distribution for relaxation')
+        choices=models.GeneralizedRelaxedDVAE.DISTRIBUTION_FACTORIES.keys(),
+        help='Underlying distribution for Generalized Sigmoid relaxation')
+
+    argparser.add_argument(
+        '--noise_distribution', type=str, default='Normal',
+        choices=models.NoiseRelaxedDVAE.NOISE_FACTORIES.keys(),
+        help='Noise distribution for noise relaxation')
 
     argparser.add_argument(
         '--batch_size', type=int, default=50,
@@ -75,7 +80,7 @@ if __name__ == "__main__":
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
         dvae = model_class(code_size=args.code_size, input_size=28*28, prior_p=args.prior_proba, lam=args.lam,
                            tau=args.tau, relaxation_distribution=args.relaxation_distribution,
-                           batch_size=args.batch_size)
+                           batch_size=args.batch_size, noise_distribution=args.noise_distribution)
 
         utils.train(dvae, dataset.train.images, dataset.validation.images, learning_rate=args.learning_rate,
                     epochs=args.epochs, batch_size=args.batch_size, evaluate_every=args.evaluate_every,

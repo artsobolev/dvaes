@@ -1,5 +1,6 @@
 import tensorflow as tf
 
+import model_utils
 from abstract_dvae import AbstractDVAE
 
 
@@ -15,16 +16,14 @@ class AbstractBackwardRelaxedDVAE(AbstractDVAE):
         with tf.name_scope('encoder'):
             distribution = tf.distributions.Bernoulli(logits=logits)
 
-        class _Implementation:
-            def sample(self, *args, **kwargs):
-                # forward pass: sigmoid(logits)
-                # backward pass: logits
+        def transform(z):
+            # forward pass: samples
+            # backward pass: logits
+            forward = tf.to_float(z)
+            backward = backward_factory(logits)
+            return backward + tf.stop_gradient(forward - backward)
 
-                forward = tf.to_float(distribution.sample(*args, **kwargs))
-                backward = backward_factory(logits, *args, **kwargs)
-                return backward + tf.stop_gradient(forward - backward)
-
-        return _Implementation()
+        return model_utils.TransformedSampler(distribution, transform)
 
 
 class StraightThroughDVAE(AbstractBackwardRelaxedDVAE):

@@ -1,3 +1,3 @@
 from .ar_dvae import AsymptoticallyReparametrisedDVAE
-from .relaxed_dvae import ConcretelyRelaxedDVAE, GeneralizedRelaxedDVAE
+from .relaxed_dvae import ConcretelyRelaxedDVAE, GeneralizedRelaxedDVAE, NoiseRelaxedDVAE
 from .backward_relaxation import StraightThroughDVAE, BackwardGumbelRelaxedDVAE, BackwardMeanRelaxedDVAE
