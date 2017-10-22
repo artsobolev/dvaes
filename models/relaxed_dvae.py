@@ -53,7 +53,7 @@ class GeneralizedRelaxedDVAE(AbstractDVAE):
 
 class NoiseRelaxedDVAE(AbstractDVAE):
     NOISE_FACTORIES = {
-        'Normal': lambda shape: tf.distributions.Normal(loc=tf.ones(shape), scale=tf.ones(shape)),
+        'Normal': lambda shape: tf.distributions.Normal(loc=tf.ones(shape), scale=0.5 * tf.ones(shape)),
     }
 
     def __init__(self, noise_distribution, *args, **kwargs):
@@ -64,16 +64,15 @@ class NoiseRelaxedDVAE(AbstractDVAE):
 
     def _build_relaxed_encoder(self, logits):
         with tf.name_scope('encoder'):
+            logits = tf.clip_by_value(logits, -5, 5)
             noise_distribution = self.noise_factory_(tf.shape(logits))
-
             uniform = tf.distributions.Uniform(low=tf.zeros_like(logits), high=tf.ones_like(logits))
-            proba = tf.sigmoid(logits)
             proba_inv = 1. + tf.exp(-logits)
             proba_c = tf.sigmoid(-logits)
 
         def transform(rho):
             discrete_case = tf.zeros_like(rho)
-            continuous_case = noise_distribution.quantile((rho - proba_c) * proba_inv)
+            continuous_case = noise_distribution.quantile(tf.clip_by_value((rho - proba_c) * proba_inv, 1e-5, 1-1e-5))
 
             return tf.where(rho < proba_c, discrete_case, continuous_case)
 
