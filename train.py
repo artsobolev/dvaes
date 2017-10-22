@@ -27,7 +27,7 @@ if __name__ == "__main__":
         help='Prior probability on code')
 
     argparser.add_argument(
-        '--learning_rate', type=float, default=1e-3,
+        '--learning_rate', type=float, default=1e-4,
         help='Learning rate')
 
     argparser.add_argument(
@@ -53,12 +53,17 @@ if __name__ == "__main__":
         help='Batch size')
 
     argparser.add_argument(
-        '--epochs', type=int, default=100,
+        '--epochs', type=int, default=10000,
         help='Number of epochs')
 
     argparser.add_argument(
-        '--evaluate_every', type=int, default=5,
-        help='Evaluate model every X batches')
+        '--multisamples', type=int, nargs='+', default=[100, 1000, 10000],
+        help='List of sample sizes for multisample ELBOs')
+
+    argparser.add_argument(
+        '--evaluate_every', type=int, nargs='+', default=[1, 5, 50],
+        help='Evaluate model on ELBO every X epochs '
+             '(for number for each multisample ELBO)')
 
     argparser.add_argument(
         '--experiment_path', type=str, default='experiments/tmp/',
@@ -73,17 +78,23 @@ if __name__ == "__main__":
 
     if args.model not in available_models:
         raise ValueError("Unknown model name: {}".format(args.model))
-    model_class = getattr(models, args.model)
 
+    evaluate_every = dict(zip(args.multisamples, args.evaluate_every))
+
+    model_class = getattr(models, args.model)
     dataset = utils.get_mnist_dataset()
 
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
-        dvae = model_class(code_size=args.code_size, input_size=28*28, prior_p=args.prior_proba, lam=args.lam,
-                           tau=args.tau, relaxation_distribution=args.relaxation_distribution,
-                           batch_size=args.batch_size, noise_distribution=args.noise_distribution)
+        train_mean = dataset.train.images.mean(axis=0)
+        output_bias = -np.log(1. / np.clip(train_mean, 0.001, 0.999) - 1.)
+
+        dvae = model_class(code_size=args.code_size, input_size=28*28, prior_p=args.prior_proba,
+                           lam=args.lam, tau=args.tau, relaxation_distribution=args.relaxation_distribution,
+                           output_bias=output_bias, batch_size=args.batch_size, multisample_ks=args.multisamples,
+                           noise_distribution=args.noise_distribution)
 
         utils.train(dvae, dataset.train.images, dataset.validation.images, learning_rate=args.learning_rate,
-                    epochs=args.epochs, batch_size=args.batch_size, evaluate_every=args.evaluate_every,
+                    epochs=args.epochs, batch_size=args.batch_size, evaluate_every=evaluate_every,
                     summaries_path=args.experiment_path, sess=sess, subset_validation=args.subset_validation)
 
         save_path = tf.train.Saver().save(sess, args.experiment_path + "/model")

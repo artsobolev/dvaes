@@ -10,10 +10,34 @@ def get_mnist_dataset():
     return input_data.read_data_sets('MNIST_data', one_hot=True)
 
 
-def train(dvae, X_train, X_val, learning_rate=1.0, epochs=10, batch_size=100, evaluate_every=10, shuffle=True,
+def batch_evaluate(target_node, input_node, data, batch_size, progress_line=None):
+    n = len(data)
+    batches = (n + batch_size - 1) / batch_size
+
+    res = 0
+    for batch_id in range(batches):
+        if progress_line is not None:
+            sys.stdout.write(progress_line.format(percent=batch_id * 1. / batches))
+            sys.stdout.flush()
+
+        begin = batch_id * batch_size
+        end = begin + batch_size
+        data_batch = data[begin:end]
+
+        res += target_node.eval(feed_dict={input_node: data_batch}) / n
+
+    return res
+
+
+def to_summary(tag_values):
+    return tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value) for tag, value in tag_values.iteritems()])
+
+
+def train(dvae, X_train, X_val, learning_rate=1.0, epochs=10, batch_size=100, evaluate_every=None, shuffle=True,
           summaries_path='./experiment/', subset_validation=1000*1000*1000, sess=None):
-    if sess is None:
-        sess = tf.get_default_session()
+
+    sess = sess or tf.get_default_session()
+    evaluate_every = evaluate_every or {}
 
     global_step = tf.train.create_global_step()
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
@@ -33,15 +57,22 @@ def train(dvae, X_train, X_val, learning_rate=1.0, epochs=10, batch_size=100, ev
         if shuffle:
             np.random.shuffle(indices)
 
-        if epoch % evaluate_every == 0:
-            start = time.time()
-            multisample_elbos, summary = dvae.evaluate_multisample(X_val[:subset_validation])
-            eval_time = time.time() - start
-            train_writer.add_summary(summary, tf.train.global_step(sess, global_step))
+        for k_samples, k_sample_elbo_evaluate_every in sorted(evaluate_every.items()):
+            if epoch % k_sample_elbo_evaluate_every != 0:
+                continue
 
-            ks = sorted(multisample_elbos.keys())
-            elbos_str = ["k={}: {:.3f}".format(k, multisample_elbos[k]) for k in ks]
-            print "\rEpoch {}: ELBOs: {} (eval. time = {:.2f})".format(epoch, ", ".join(elbos_str), eval_time)
+            progress_line = "\rEpoch {}: computing {}-ELBO... {}".format(epoch, k_samples,
+                                                                         "{percent:.2%}" + " " * 30)
+            start = time.time()
+            elbo = batch_evaluate(dvae.multisample_elbos_[k_samples], dvae.input_, X_val[:subset_validation],
+                                  batch_size=dvae.batch_size, progress_line=progress_line)
+
+            eval_time = time.time() - start
+
+            train_writer.add_summary(to_summary({"{}-sample ELBO".format(k_samples): elbo}),
+                                     tf.train.global_step(sess, global_step))
+
+            print "\rEpoch {}: {}-ELBO: {:.3f} (eval. time = {:.2f})".format(epoch, k_samples, elbo, eval_time)
             
         for batch_id in range(batches):
             batch_begin = batch_id * batch_size

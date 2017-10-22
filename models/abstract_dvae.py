@@ -9,12 +9,15 @@ def log_sigmoid(x):
 
 
 class AbstractDVAE:
-    def __init__(self, code_size, input_size, prior_p, lam, multisample_ks=(100, 1000, 10000), *args, **kwargs):
+    def __init__(self, code_size, input_size, prior_p, lam, output_bias, multisample_ks=(), *args, **kwargs):
         self.code_size = code_size
         self.input_size = input_size
         self.prior_p = prior_p
         self.lam = lam
+        self.output_bias = output_bias
         self.batch_size = kwargs.get('batch_size')
+
+        self._layer_params = dict(kernel_initializer=tf.contrib.layers.xavier_initializer())
 
         # Can't use dynamic-sized batching since some Normal distribution's
         # quantile function can't work with it
@@ -30,23 +33,25 @@ class AbstractDVAE:
 
         self.summaries_op_ = tf.summary.merge(self.relaxed_summaries_ + self.discrete_summaries_)
 
-        self._multisample_elbos = {k: self._build_multisample_elbo(self.input_, k, reuse=True) for k in multisample_ks}
+        self.multisample_elbos_ = {k: self._build_multisample_elbo(self.input_, k, reuse=True) for k in multisample_ks}
 
-    def _build_encoder_logits(self, input, reuse):
-        net = self._to_signed_binary(input)
+    def _build_encoder_logits(self, x, reuse):
+        net = self._to_signed_binary(x)
         with tf.variable_scope('encoder', reuse=reuse):
-            net = tf.layers.dense(net, 200, activation=tf.nn.tanh)
-            net = tf.layers.dense(net, 200, activation=tf.nn.tanh)
-            net = tf.layers.dense(net, self.code_size, activation=None)
+            net = tf.layers.dense(net, 200, activation=tf.nn.tanh, **self._layer_params)
+            net = tf.layers.dense(net, 200, activation=tf.nn.tanh, **self._layer_params)
+            net = tf.layers.dense(net, self.code_size, activation=None, **self._layer_params)
 
         return net
 
     def _build_decoder_logits(self, code, reuse):
         net = self._to_signed_binary(code)
         with tf.variable_scope('decoder', reuse=reuse):
-            net = tf.layers.dense(net, 200, activation=tf.nn.tanh)
-            net = tf.layers.dense(net, 200, activation=tf.nn.tanh)
-            net = tf.layers.dense(net, self.input_size, activation=None)
+            net = tf.layers.dense(net, 200, activation=tf.nn.tanh, **self._layer_params)
+            net = tf.layers.dense(net, 200, activation=tf.nn.tanh, **self._layer_params)
+            net = tf.layers.dense(net, self.input_size, activation=None,
+                                  bias_initializer=tf.constant_initializer(self.output_bias),
+                                  **self._layer_params)
         
         return net
     
@@ -107,21 +112,21 @@ class AbstractDVAE:
         loss, summaries = self._build_loss(encoder_logits, decoder.log_prob(x), 'relaxed' if relaxed else 'discrete')
         return encoder, code, decoder, loss, summaries
 
-    def _build_multisample_elbo(self, x, K, reuse):
+    def _build_multisample_elbo(self, x, k_samples, reuse):
         encoder_logits = self._build_encoder_logits(x, reuse=reuse)
         encoder = self._build_encoder(encoder_logits)  # N x C
-        code = tf.to_float(encoder.sample(K))  # K x N x C
+        code = tf.to_float(encoder.sample(k_samples))  # K x N x C
 
         decoder_logits = self._build_decoder_logits(code, reuse=reuse)
         decoder = self._build_decoder(decoder_logits) # K x N x M
 
         prior = self._build_prior()
 
-        with tf.name_scope("{}-sample_elbo".format(K)):
+        with tf.name_scope("{}-sample_elbo".format(k_samples)):
             reconstruction = tf.reduce_sum(decoder.log_prob(x), axis=2)
             kl = tf.reduce_sum(encoder.log_prob(code) - prior.log_prob(code), axis=2)
             elbos = reconstruction - kl
-            multisample_elbo = tf.reduce_logsumexp(elbos, axis=0) - np.log(K)
+            multisample_elbo = tf.reduce_logsumexp(elbos, axis=0) - np.log(k_samples)
 
         return tf.reduce_sum(multisample_elbo, axis=0)
     
@@ -135,31 +140,6 @@ class AbstractDVAE:
         code = encoder.mean() if deterministic else encoder.sample()
         return code.eval(feed_dict={self.input_: x})
 
-    def _batch_evaluate(self, node, input, X, batch_size):
-        n = len(X)
-        batches = (n + batch_size - 1) / batch_size
-
-        res = 0
-        for batch_id in range(batches):
-            begin = batch_id * batch_size
-            end = begin + batch_size
-            X_batch = X[begin:end]
-
-            res += node.eval(feed_dict={input: X_batch})
-
-        return res / n
-
     @staticmethod
-    def _to_signed_binary(X):
-        return 2 * X - 1
-
-    def evaluate_multisample(self, X):
-        elbos = {k: self._batch_evaluate(elbo, self.input_, X, batch_size=self.batch_size)
-                 for k, elbo in self._multisample_elbos.iteritems()}
-
-        summary = tf.Summary(value=[
-            tf.Summary.Value(tag="{}-sample ELBO".format(k), simple_value=elbo)
-            for k, elbo in elbos.iteritems()
-        ])
-
-        return elbos, summary
+    def _to_signed_binary(x):
+        return 2 * x - 1
