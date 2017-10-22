@@ -94,7 +94,7 @@ if __name__ == "__main__":
                            noise_distribution=args.noise_distribution)
 
         utils.train(dvae, dataset.train.images, dataset.validation.images, learning_rate=args.learning_rate,
-                    epochs=args.epochs, batch_size=args.batch_size, evaluate_every=evaluate_every,
+                    epochs_total=args.epochs, batch_size=args.batch_size, evaluate_every=evaluate_every,
                     summaries_path=args.experiment_path, sess=sess, subset_validation=args.subset_validation)
 
         save_path = tf.train.Saver().save(sess, args.experiment_path + "/model")

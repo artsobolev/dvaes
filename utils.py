@@ -5,6 +5,36 @@ import time
 import sys
 
 
+class MeanVarianceEstimator:
+    def __init__(self):
+        self._mu = np.nan
+        self._tau = 0.
+        self._n = 0
+
+    def update(self, x):
+        mu = self._mu if not np.isnan(self._mu) else 0.
+
+        self._mu = mu + (x - mu) / (self._n + 1)
+        self._tau += (x - mu) * (x - self._mu)
+
+        assert self._mu == self._mu
+        assert self._tau == self._tau
+
+        self._n += 1
+
+    @property
+    def mean(self):
+        return self._mu
+
+    @property
+    def variance(self):
+        return self._tau / (self._n - 1) if self._n > 1 else 0
+
+    @property
+    def std(self):
+        return self.variance ** 0.5
+
+
 def get_mnist_dataset():
     from tensorflow.examples.tutorials.mnist import input_data
     return input_data.read_data_sets('MNIST_data', one_hot=True)
@@ -33,7 +63,19 @@ def to_summary(tag_values):
     return tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value) for tag, value in tag_values.iteritems()])
 
 
-def train(dvae, X_train, X_val, learning_rate=1.0, epochs=10, batch_size=100, evaluate_every=None, shuffle=True,
+def get_eta(epochs_total, epochs_passed, timers, k=2):
+    mu = 0
+    variance = 0
+
+    for period, timer in timers:
+        fires_left = epochs_total / period - epochs_passed / period
+        mu += timer.mean * fires_left
+        variance += timer.variance * fires_left
+
+    return mu + k * variance ** 0.5
+
+
+def train(dvae, X_train, X_val, learning_rate=1.0, epochs_total=10, batch_size=100, evaluate_every=None, shuffle=True,
           summaries_path='./experiment/', subset_validation=1000*1000*1000, sess=None):
 
     sess = sess or tf.get_default_session()
@@ -49,11 +91,14 @@ def train(dvae, X_train, X_val, learning_rate=1.0, epochs=10, batch_size=100, ev
     indices = np.arange(train_size)
     batches = (train_size + batch_size - 1) / batch_size
 
-    avg_run_time = 0
-    mu = 1
+    avg_batch_time = MeanVarianceEstimator()
+    avg_k_elbo_time = {k: MeanVarianceEstimator() for k in evaluate_every.iterkeys()}
+
+    timers = [(period, avg_k_elbo_time[k]) for k, period in evaluate_every.iteritems()]
+    timers.append((1. / batches, avg_batch_time))
 
     tf.global_variables_initializer().run()
-    for epoch in range(epochs):
+    for epoch in range(epochs_total):
         if shuffle:
             np.random.shuffle(indices)
 
@@ -61,18 +106,21 @@ def train(dvae, X_train, X_val, learning_rate=1.0, epochs=10, batch_size=100, ev
             if epoch % k_sample_elbo_evaluate_every != 0:
                 continue
 
-            progress_line = "\rEpoch {}: computing {}-ELBO... {}".format(epoch, k_samples,
-                                                                         "{percent:.2%}" + " " * 30)
+            progress_line = "\rEpoch {}: computing {}-ELBO... {}".format(epoch, k_samples, "{percent:.2%}" + " " * 30)
             start = time.time()
             elbo = batch_evaluate(dvae.multisample_elbos_[k_samples], dvae.input_, X_val[:subset_validation],
                                   batch_size=dvae.batch_size, progress_line=progress_line)
 
             eval_time = time.time() - start
+            avg_k_elbo_time[k_samples].update(eval_time)
 
             train_writer.add_summary(to_summary({"{}-sample ELBO".format(k_samples): elbo}),
                                      tf.train.global_step(sess, global_step))
 
-            print "\rEpoch {}: {}-ELBO: {:.3f} (eval. time = {:.2f})".format(epoch, k_samples, elbo, eval_time)
+            eta = get_eta(epochs_total, epoch, timers)
+            print "\rEpoch {}: ETA: {:.1f}s, {}-ELBO: {:.3f} " \
+                  "(eval. time = {:.2f}, avg. = {:.2f})".format(epoch, eta, k_samples, elbo,
+                                                                eval_time, avg_k_elbo_time[k_samples].mean)
             
         for batch_id in range(batches):
             batch_begin = batch_id * batch_size
@@ -84,11 +132,11 @@ def train(dvae, X_train, X_val, learning_rate=1.0, epochs=10, batch_size=100, ev
 
             start = time.time()
             _, summary = sess.run([train_op, dvae.summaries_op_], feed_dict={dvae.input_: X_samples})
-            execution_time = time.time() - start
+            run_time = time.time() - start
+            avg_batch_time.update(run_time)
 
-            avg_run_time = mu * execution_time + (1 - mu) * avg_run_time
-            mu = 0.9
-            sys.stdout.write("\rEpoch {}.{}: Time per batch: {:.4f}s".format(epoch, batch_id, avg_run_time) + " " * 30)
+            sys.stdout.write("\rEpoch {}.{}: Time per batch: {:.4f}s "
+                             "(avg. = {:.4f}s)".format(epoch, batch_id, run_time, avg_batch_time.mean) + " " * 30)
             sys.stdout.flush()
 
             train_writer.add_summary(summary, tf.train.global_step(sess, global_step))
