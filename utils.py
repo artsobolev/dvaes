@@ -75,6 +75,20 @@ def get_eta(epochs_total, epochs_passed, timers, k=2):
     return mu + k * variance ** 0.5
 
 
+def to_time_string(n):
+    if n != n:
+        return "Unknown"
+
+    time_data = zip([np.inf, 24, 60, 60], '{}d {:2}h {:2}m {:2}s'.split(' '))
+    res = []
+    for size, fmt in reversed(time_data):
+        n, k = divmod(n, size)
+        if k:
+            res.append(fmt.format(int(k)))
+
+    return " ".join(reversed(res))
+
+
 def train(dvae, X_train, X_val, learning_rate, epochs_total, eval_batch_size, evaluate_every=None, shuffle=True,
           summaries_path='./experiment/', subset_validation=1000*1000*1000, sess=None):
 
@@ -117,8 +131,8 @@ def train(dvae, X_train, X_val, learning_rate, epochs_total, eval_batch_size, ev
             train_writer.add_summary(to_summary({"{}-sample ELBO".format(k_samples): elbo}),
                                      tf.train.global_step(sess, global_step))
 
-            eta = get_eta(epochs_total, epoch, timers)
-            print "\rEpoch {}: ETA: {:.1f}s, {}-ELBO: {:.3f} " \
+            eta = to_time_string(get_eta(epochs_total, epoch, timers))
+            print "\rEpoch {}: ETA: {}, {}-ELBO: {:.3f} " \
                   "(eval. time = {:.2f}, avg. = {:.2f})".format(epoch, eta, k_samples, elbo,
                                                                 eval_time, avg_k_elbo_time[k_samples].mean)
             

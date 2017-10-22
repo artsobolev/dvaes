@@ -17,10 +17,17 @@ class ConcretelyRelaxedDVAE(AbstractDVAE):
             return tf.contrib.distributions.TransformedDistribution(logistic, bijector=transformation)
 
 
+class _UniformWithQuantile(tf.distributions.Uniform):
+    def __init__(self, *args, **kwargs):
+        tf.distributions.Uniform.__init__(self, *args, **kwargs)
+
+    def _quantile(self, p):
+        return p * self.range() + self.low
+
+
 class GeneralizedRelaxedDVAE(AbstractDVAE):
     DISTRIBUTION_FACTORIES = {
-        'Uniform': lambda shape: tf.distributions.Uniform(low=tf.zeros(shape), high=tf.ones(shape)),
-        'Laplace': lambda shape: tf.distributions.Laplace(loc=tf.zeros(shape), scale=tf.ones(shape)),
+        'Uniform': lambda shape: _UniformWithQuantile(low=tf.zeros(shape), high=tf.ones(shape)),
         'Normal': lambda shape: tf.distributions.Normal(loc=tf.zeros(shape), scale=tf.ones(shape)),
     }
 
@@ -44,7 +51,6 @@ class GeneralizedRelaxedDVAE(AbstractDVAE):
             return tf.contrib.distributions.TransformedDistribution(distribution, bijector=transform)
 
 
-# FIXME: nans T_T
 class NoiseRelaxedDVAE(AbstractDVAE):
     NOISE_FACTORIES = {
         'Normal': lambda shape: tf.distributions.Normal(loc=tf.ones(shape), scale=tf.ones(shape)),
@@ -66,14 +72,9 @@ class NoiseRelaxedDVAE(AbstractDVAE):
             proba_c = tf.sigmoid(-logits)
 
         def transform(rho):
-            threshold_lo = noise_distribution.cdf(0.0) * proba
-            threshold_hi = threshold_lo + proba_c
+            discrete_case = tf.zeros_like(rho)
+            continuous_case = noise_distribution.quantile((rho - proba_c) * proba_inv)
 
-            lower_case = noise_distribution.quantile(rho)
-            middle_case = tf.zeros_like(rho)
-            higher_case = noise_distribution.quantile((rho - proba_c) * proba_inv)
-
-            return tf.where(rho < threshold_lo, lower_case,
-                            tf.where(rho < threshold_hi, middle_case, higher_case))
+            return tf.where(rho < proba_c, discrete_case, continuous_case)
 
         return model_utils.TransformedSampler(uniform, transform)

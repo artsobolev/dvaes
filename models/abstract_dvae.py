@@ -21,7 +21,7 @@ class AbstractDVAE:
 
         # Can't use dynamic-sized batching since some Normal distribution's
         # quantile function can't work with it
-        self.input_ = tf.placeholder(tf.float32, shape=(self.batch_size, self.input_size), name='Input')
+        self.input_ = tf.placeholder(tf.float32, shape=(None, self.input_size), name='Input')
 
         self.relaxed_encoder_, self.relaxed_code_,\
         self.relaxed_decoder_, self.relaxed_loss_, self.relaxed_summaries_ = self._build(self.input_,
