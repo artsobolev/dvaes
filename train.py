@@ -61,7 +61,7 @@ if __name__ == "__main__":
         help='List of sample sizes for multisample ELBOs')
 
     argparser.add_argument(
-        '--evaluate_every', type=int, nargs='+', default=[1, 5, 50],
+        '--evaluate_every', type=int, nargs='+', default=[3, 10, 100],
         help='Evaluate model on ELBO every X epochs '
              '(for number for each multisample ELBO)')
 
