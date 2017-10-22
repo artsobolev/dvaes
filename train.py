@@ -53,6 +53,10 @@ if __name__ == "__main__":
         help='Batch size')
 
     argparser.add_argument(
+        '--eval_batch_size', type=int, default=50,
+        help='Batch size for evaluation')
+
+    argparser.add_argument(
         '--epochs', type=int, default=10000,
         help='Number of epochs')
 
@@ -94,7 +98,7 @@ if __name__ == "__main__":
                            noise_distribution=args.noise_distribution)
 
         utils.train(dvae, dataset.train.images, dataset.validation.images, learning_rate=args.learning_rate,
-                    epochs_total=args.epochs, batch_size=args.batch_size, evaluate_every=evaluate_every,
+                    epochs_total=args.epochs, eval_batch_size=args.eval_batch_size, evaluate_every=evaluate_every,
                     summaries_path=args.experiment_path, sess=sess, subset_validation=args.subset_validation)
 
         save_path = tf.train.Saver().save(sess, args.experiment_path + "/model")

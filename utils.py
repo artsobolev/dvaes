@@ -75,7 +75,7 @@ def get_eta(epochs_total, epochs_passed, timers, k=2):
     return mu + k * variance ** 0.5
 
 
-def train(dvae, X_train, X_val, learning_rate=1.0, epochs_total=10, batch_size=100, evaluate_every=None, shuffle=True,
+def train(dvae, X_train, X_val, learning_rate, epochs_total, eval_batch_size, evaluate_every=None, shuffle=True,
           summaries_path='./experiment/', subset_validation=1000*1000*1000, sess=None):
 
     sess = sess or tf.get_default_session()
@@ -89,7 +89,7 @@ def train(dvae, X_train, X_val, learning_rate=1.0, epochs_total=10, batch_size=1
 
     train_size = len(X_train)
     indices = np.arange(train_size)
-    batches = (train_size + batch_size - 1) / batch_size
+    batches = (train_size + dvae.batch_size - 1) / dvae.batch_size
 
     avg_batch_time = MeanVarianceEstimator()
     avg_k_elbo_time = {k: MeanVarianceEstimator() for k in evaluate_every.iterkeys()}
@@ -109,7 +109,7 @@ def train(dvae, X_train, X_val, learning_rate=1.0, epochs_total=10, batch_size=1
             progress_line = "\rEpoch {}: computing {}-ELBO... {}".format(epoch, k_samples, "{percent:.2%}" + " " * 30)
             start = time.time()
             elbo = batch_evaluate(dvae.multisample_elbos_[k_samples], dvae.input_, X_val[:subset_validation],
-                                  batch_size=dvae.batch_size, progress_line=progress_line)
+                                  batch_size=eval_batch_size, progress_line=progress_line)
 
             eval_time = time.time() - start
             avg_k_elbo_time[k_samples].update(eval_time)
@@ -123,8 +123,8 @@ def train(dvae, X_train, X_val, learning_rate=1.0, epochs_total=10, batch_size=1
                                                                 eval_time, avg_k_elbo_time[k_samples].mean)
             
         for batch_id in range(batches):
-            batch_begin = batch_id * batch_size
-            batch_end = batch_begin + batch_size
+            batch_begin = batch_id * dvae.batch_size
+            batch_end = batch_begin + dvae.batch_size
             batch_indices = indices[batch_begin:batch_end]
 
             X_batch = X_train[batch_indices]
