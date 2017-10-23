@@ -51,9 +51,18 @@ class GeneralizedRelaxedDVAE(AbstractDVAE):
             return tf.contrib.distributions.TransformedDistribution(distribution, bijector=transform)
 
 
+class _TruncatedExponential:
+    def __init__(self, beta):
+        self.beta = beta
+
+    def quantile(self, rho):
+        return tf.log1p(rho * tf.expm1(self.beta)) / self.beta
+
+
 class NoiseRelaxedDVAE(AbstractDVAE):
     NOISE_FACTORIES = {
-        'Normal': lambda shape: tf.distributions.Normal(loc=tf.ones(shape), scale=0.5 * tf.ones(shape)),
+        'Normal': lambda shape, tau: tf.distributions.Normal(loc=tf.ones(shape), scale=tau * tf.ones(shape)),
+        'TruncatedExponential': lambda shape, tau: _TruncatedExponential(beta=tf.ones(shape) / tau),
     }
 
     def __init__(self, noise_distribution, *args, **kwargs):
@@ -65,7 +74,7 @@ class NoiseRelaxedDVAE(AbstractDVAE):
     def _build_relaxed_encoder(self, logits):
         with tf.name_scope('encoder'):
             logits = tf.clip_by_value(logits, -5, 5)
-            noise_distribution = self.noise_factory_(tf.shape(logits))
+            noise_distribution = self.noise_factory_(tf.shape(logits), self.tau)
             uniform = tf.distributions.Uniform(low=tf.zeros_like(logits), high=tf.ones_like(logits))
             proba_inv = 1. + tf.exp(-logits)
             proba_c = tf.sigmoid(-logits)
