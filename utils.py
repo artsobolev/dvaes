@@ -111,11 +111,14 @@ def train(dvae, X_train, X_val, learning_rate, epochs_total, eval_batch_size, ev
     timers = [(period, avg_k_elbo_time[k]) for k, period in evaluate_every.iteritems()]
     timers.append((1. / batches, avg_batch_time))
 
+    max_k_samples = max(evaluate_every.keys())
+
     tf.global_variables_initializer().run()
     for epoch in range(epochs_total):
         if shuffle:
             np.random.shuffle(indices)
 
+        elbos = {}
         for k_samples, k_sample_elbo_evaluate_every in sorted(evaluate_every.items()):
             if epoch % k_sample_elbo_evaluate_every != 0:
                 continue
@@ -124,6 +127,7 @@ def train(dvae, X_train, X_val, learning_rate, epochs_total, eval_batch_size, ev
             start = time.time()
             elbo = batch_evaluate(dvae.multisample_elbos_[k_samples], dvae.input_, X_val[:subset_validation],
                                   batch_size=eval_batch_size, progress_line=progress_line)
+            elbos[k_samples] = elbo
 
             eval_time = time.time() - start
             avg_k_elbo_time[k_samples].update(eval_time)
@@ -135,6 +139,11 @@ def train(dvae, X_train, X_val, learning_rate, epochs_total, eval_batch_size, ev
             print "\rEpoch {}: ETA: {}, {}-ELBO: {:.3f} " \
                   "(eval. time = {:.2f}, avg. = {:.2f})".format(epoch, eta, k_samples, elbo,
                                                                 eval_time, avg_k_elbo_time[k_samples].mean)
+
+        if 1 in elbos and max_k_samples in elbos:
+            kl = elbos[max_k_samples] - elbos[1]
+            train_writer.add_summary(to_summary({"{}-sample posterior KL".format(max_k_samples): kl}),
+                                     tf.train.global_step(sess, global_step))
             
         for batch_id in range(batches):
             batch_begin = batch_id * dvae.batch_size

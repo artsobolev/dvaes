@@ -35,6 +35,10 @@ class AbstractDVAE:
 
         self.multisample_elbos_ = {k: self._build_multisample_elbo(self.input_, k, reuse=True) for k in multisample_ks}
 
+        if 1 in self.multisample_elbos_ and len(self.multisample_elbos_) > 1:
+            max_k = max(self.multisample_elbos_.keys())
+            self.posterior_approximation_kl_ = self.multisample_elbos_[max_k] - self.multisample_elbos_[1]
+
     def _build_encoder_logits(self, x, reuse):
         net = self._to_signed_binary(x)
         with tf.variable_scope('encoder', reuse=reuse):
@@ -113,6 +117,8 @@ class AbstractDVAE:
         return encoder, code, decoder, loss, summaries
 
     def _build_multisample_elbo(self, x, k_samples, reuse):
+        assert k_samples > 0
+
         encoder_logits = self._build_encoder_logits(x, reuse=reuse)
         encoder = self._build_encoder(encoder_logits)  # N x C
         code = tf.to_float(encoder.sample(k_samples))  # K x N x C
