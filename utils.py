@@ -63,7 +63,7 @@ def to_summary(tag_values):
     return tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value) for tag, value in tag_values.iteritems()])
 
 
-def get_eta(epochs_total, epochs_passed, timers, k=2):
+def get_time_left(epochs_total, epochs_passed, timers, k=2):
     mu = 0
     variance = 0
 
@@ -137,9 +137,9 @@ def train(dvae, X_train, X_val, learning_rate, epochs_total, eval_batch_size, ev
                 train_writer.add_summary(to_summary({"{}-sample ELBO".format(k_samples): elbo}),
                                          tf.train.global_step(sess, global_step))
 
-                eta = to_time_string(get_eta(epochs_total, epoch, timers))
+                time_left = to_time_string(get_time_left(epochs_total, epoch, timers))
                 print "\rEpoch {}: ETA: {}, {}-ELBO: {:.3f} " \
-                      "(eval. time = {:.2f}, avg. = {:.2f})".format(epoch, eta, k_samples, elbo,
+                      "(eval. time = {:.2f}, avg. = {:.2f})".format(epoch, time_left, k_samples, elbo,
                                                                     eval_time, avg_k_elbo_time[k_samples].mean)
 
             if 1 in elbos and max_k_samples in elbos:
