@@ -74,9 +74,9 @@ class AbstractDVAE:
         with tf.name_scope('prior'):
             return tf.contrib.distributions.Bernoulli(probs=self.prior_p)
 
-    def _build_loss(self, encoder_logits, reconstruction, scope_name):
+    def _build_elbo(self, encoder_logits, reconstruction, scope_name):
         summaries = []
-        with tf.name_scope('loss'):
+        with tf.name_scope('elbo'):
             q = tf.sigmoid(encoder_logits)
             q_neg = tf.sigmoid(-encoder_logits)
 
@@ -87,17 +87,22 @@ class AbstractDVAE:
 
             reconstruction_per_object = tf.reduce_sum(reconstruction, axis=1)
             elbo_per_object = reconstruction_per_object - kl_per_object
+
             elbo_mean, elbo_var = tf.nn.moments(elbo_per_object, axes=[0])
 
-            regularization = self._get_regularization()
-            loss = -elbo_mean + regularization
-
         with tf.name_scope(scope_name):
-            summaries.append(tf.summary.scalar('loss', loss))
-            summaries.append(tf.summary.scalar('regularization', regularization))
             summaries += model_utils.summary_mean_and_std('elbo', elbo_mean, elbo_var ** 0.5)
             summaries += model_utils.summary_mean_and_std('kl', kl_mean, kl_var ** 0.5)
 
+        return elbo_per_object, summaries
+
+    def _build_loss(self, elbo_per_object):
+        surrogate_elbo = tf.contrib.bayesflow.stochastic_graph.surrogate_loss([elbo_per_object])
+
+        regularization = self._get_regularization()
+        loss = -tf.reduce_mean(surrogate_elbo, axis=0) + regularization
+
+        summaries = [tf.summary.scalar('loss', loss), tf.summary.scalar('regularization', regularization)]
         return loss, summaries
 
     def _get_regularization(self):
@@ -105,15 +110,30 @@ class AbstractDVAE:
         regularizer = tf.contrib.layers.l2_regularizer(self.lam)
         return tf.contrib.layers.apply_regularization(regularizer, regularizables)
 
+    def _encoder_loss(self, z, z_value, influenced_loss):
+        return tf.contrib.bayesflow.stochastic_gradient_estimators.score_function(z, z_value, influenced_loss)
+
     def _build(self, x, reuse, relaxed=False):
         encoder_logits = self._build_encoder_logits(x, reuse=reuse)
-        encoder = (self._build_relaxed_encoder if relaxed else self._build_encoder)(encoder_logits)
-        code = tf.to_float(encoder.sample())
+        if relaxed:
+            encoder = self._build_relaxed_encoder(encoder_logits)
+            code = tf.contrib.bayesflow.stochastic_tensor.StochasticTensor(encoder, loss_fn=self._encoder_loss)
+        else:
+            encoder = self._build_encoder(encoder_logits)
+            code = encoder.sample()
+
+        code = tf.to_float(code)
 
         decoder_logits = self._build_decoder_logits(code, reuse=reuse)
         decoder = self._build_decoder(decoder_logits)
 
-        loss, summaries = self._build_loss(encoder_logits, decoder.log_prob(x), 'relaxed' if relaxed else 'discrete')
+        elbo_per_object, summaries = self._build_elbo(encoder_logits, decoder.log_prob(x),
+                                                      'relaxed' if relaxed else 'discrete')
+        loss = None
+        if relaxed:
+            loss, extra_summaries = self._build_loss(elbo_per_object)
+            summaries += extra_summaries
+
         return encoder, code, decoder, loss, summaries
 
     def _build_multisample_elbo(self, x, k_samples, reuse):
@@ -124,7 +144,7 @@ class AbstractDVAE:
         code = tf.to_float(encoder.sample(k_samples))  # K x N x C
 
         decoder_logits = self._build_decoder_logits(code, reuse=reuse)
-        decoder = self._build_decoder(decoder_logits) # K x N x M
+        decoder = self._build_decoder(decoder_logits)  # K x N x M
 
         prior = self._build_prior()
 
@@ -148,4 +168,4 @@ class AbstractDVAE:
 
     @staticmethod
     def _to_signed_binary(x):
-        return 2 * x - 1
+        return tf.subtract(tf.scalar_mul(2, x), 1)

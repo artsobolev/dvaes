@@ -58,11 +58,15 @@ class _TruncatedExponential:
     def quantile(self, rho):
         return tf.log1p(rho * tf.expm1(self.beta)) / self.beta
 
+def getTruncatedExponentialLearnableBeta(shape, tau):
+    beta = tf.clip_by_value(tf.Variable(1.0 / tau), 0.2, 5)
+    return _TruncatedExponential(beta=tf.ones(shape) * beta)
 
 class NoiseRelaxedDVAE(AbstractDVAE):
     NOISE_FACTORIES = {
         'Normal': lambda shape, tau: tf.distributions.Normal(loc=tf.ones(shape), scale=tau * tf.ones(shape)),
         'TruncatedExponential': lambda shape, tau: _TruncatedExponential(beta=tf.ones(shape) / tau),
+        'TruncatedExponentialLearnableBeta': getTruncatedExponentialLearnableBeta
     }
 
     def __init__(self, noise_distribution, *args, **kwargs):

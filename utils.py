@@ -90,7 +90,7 @@ def to_time_string(n):
 
 
 def train(dvae, X_train, X_val, learning_rate, epochs_total, eval_batch_size, evaluate_every=None, shuffle=True,
-          summaries_path='./experiment/', subset_validation=1000*1000*1000, sess=None):
+          experiment_path='./experiment/', subset_validation=1000 * 1000 * 1000, sess=None):
 
     sess = sess or tf.get_default_session()
     evaluate_every = evaluate_every or {}
@@ -99,7 +99,7 @@ def train(dvae, X_train, X_val, learning_rate, epochs_total, eval_batch_size, ev
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
     train_op = optimizer.minimize(dvae.relaxed_loss_, global_step=global_step)
 
-    train_writer = tf.summary.FileWriter(summaries_path, sess.graph)
+    train_writer = tf.summary.FileWriter(experiment_path + "/logs", sess.graph)
 
     train_size = len(X_train)
     indices = np.arange(train_size)
@@ -114,54 +114,62 @@ def train(dvae, X_train, X_val, learning_rate, epochs_total, eval_batch_size, ev
     max_k_samples = max(evaluate_every.keys())
 
     tf.global_variables_initializer().run()
-    for epoch in range(epochs_total):
-        if shuffle:
-            np.random.shuffle(indices)
+    try:
+        for epoch in range(epochs_total):
+            if shuffle:
+                np.random.shuffle(indices)
 
-        elbos = {}
-        for k_samples, k_sample_elbo_evaluate_every in sorted(evaluate_every.items()):
-            if epoch % k_sample_elbo_evaluate_every != 0:
-                continue
+            elbos = {}
+            for k_samples, k_sample_elbo_evaluate_every in sorted(evaluate_every.items()):
+                if epoch % k_sample_elbo_evaluate_every != 0:
+                    continue
 
-            progress_line = "\rEpoch {}: computing {}-ELBO... {}".format(epoch, k_samples, "{percent:.2%}" + " " * 30)
-            start = time.time()
-            elbo = batch_evaluate(dvae.multisample_elbos_[k_samples], dvae.input_, X_val[:subset_validation],
-                                  batch_size=eval_batch_size, progress_line=progress_line)
-            elbos[k_samples] = elbo
+                progress_line = "\rEpoch {}: computing {}-ELBO... {}".format(epoch, k_samples,
+                                                                             "{percent:.2%}" + " " * 30)
+                start = time.time()
+                elbo = batch_evaluate(dvae.multisample_elbos_[k_samples], dvae.input_, X_val[:subset_validation],
+                                      batch_size=eval_batch_size, progress_line=progress_line)
+                elbos[k_samples] = elbo
 
-            eval_time = time.time() - start
-            avg_k_elbo_time[k_samples].update(eval_time)
+                eval_time = time.time() - start
+                avg_k_elbo_time[k_samples].update(eval_time)
 
-            train_writer.add_summary(to_summary({"{}-sample ELBO".format(k_samples): elbo}),
-                                     tf.train.global_step(sess, global_step))
+                train_writer.add_summary(to_summary({"{}-sample ELBO".format(k_samples): elbo}),
+                                         tf.train.global_step(sess, global_step))
 
-            eta = to_time_string(get_eta(epochs_total, epoch, timers))
-            print "\rEpoch {}: ETA: {}, {}-ELBO: {:.3f} " \
-                  "(eval. time = {:.2f}, avg. = {:.2f})".format(epoch, eta, k_samples, elbo,
-                                                                eval_time, avg_k_elbo_time[k_samples].mean)
+                eta = to_time_string(get_eta(epochs_total, epoch, timers))
+                print "\rEpoch {}: ETA: {}, {}-ELBO: {:.3f} " \
+                      "(eval. time = {:.2f}, avg. = {:.2f})".format(epoch, eta, k_samples, elbo,
+                                                                    eval_time, avg_k_elbo_time[k_samples].mean)
 
-        if 1 in elbos and max_k_samples in elbos:
-            kl = elbos[max_k_samples] - elbos[1]
-            train_writer.add_summary(to_summary({"{}-sample posterior KL".format(max_k_samples): kl}),
-                                     tf.train.global_step(sess, global_step))
-            
-        for batch_id in range(batches):
-            batch_begin = batch_id * dvae.batch_size
-            batch_end = batch_begin + dvae.batch_size
-            batch_indices = indices[batch_begin:batch_end]
+            if 1 in elbos and max_k_samples in elbos:
+                kl = elbos[max_k_samples] - elbos[1]
+                train_writer.add_summary(to_summary({"{}-sample posterior KL".format(max_k_samples): kl}),
+                                         tf.train.global_step(sess, global_step))
 
-            X_batch = X_train[batch_indices]
-            X_samples = np.random.binomial(1, X_batch)
+            for batch_id in range(batches):
+                batch_begin = batch_id * dvae.batch_size
+                batch_end = batch_begin + dvae.batch_size
+                batch_indices = indices[batch_begin:batch_end]
 
-            start = time.time()
-            _, summary = sess.run([train_op, dvae.summaries_op_], feed_dict={dvae.input_: X_samples})
-            run_time = time.time() - start
-            avg_batch_time.update(run_time)
+                X_batch = X_train[batch_indices]
+                X_samples = np.random.binomial(1, X_batch)
 
-            sys.stdout.write("\rEpoch {}.{}: Time per batch: {:.4f}s "
-                             "(avg. = {:.4f}s)".format(epoch, batch_id, run_time, avg_batch_time.mean) + " " * 30)
-            sys.stdout.flush()
+                start = time.time()
+                _, summary = sess.run([train_op, dvae.summaries_op_], feed_dict={dvae.input_: X_samples})
+                run_time = time.time() - start
+                avg_batch_time.update(run_time)
 
-            train_writer.add_summary(summary, tf.train.global_step(sess, global_step))
+                sys.stdout.write("\rEpoch {}.{}: Time per batch: {:.4f}s "
+                                 "(avg. = {:.4f}s)".format(epoch, batch_id, run_time, avg_batch_time.mean) + " " * 30)
+                sys.stdout.flush()
 
-        train_writer.flush()
+                train_writer.add_summary(summary, tf.train.global_step(sess, global_step))
+
+            train_writer.flush()
+    except (KeyboardInterrupt, SystemExit):
+        print '\r' + '=' * 30
+        print 'Training was stopped manually'
+        print '=' * 30
+
+    tf.train.Saver().save(sess, experiment_path + "/model")

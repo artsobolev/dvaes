@@ -99,6 +99,4 @@ if __name__ == "__main__":
 
         utils.train(dvae, dataset.train.images, dataset.validation.images, learning_rate=args.learning_rate,
                     epochs_total=args.epochs, eval_batch_size=args.eval_batch_size, evaluate_every=evaluate_every,
-                    summaries_path=args.experiment_path, sess=sess, subset_validation=args.subset_validation)
-
-        save_path = tf.train.Saver().save(sess, args.experiment_path + "/model")
+                    experiment_path=args.experiment_path, sess=sess, subset_validation=args.subset_validation)
