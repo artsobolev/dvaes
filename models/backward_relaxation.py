@@ -8,29 +8,31 @@ class AbstractBackwardRelaxedDVAE(AbstractDVAE):
     def __init__(self, *args, **kwargs):
         AbstractDVAE.__init__(self, *args, **kwargs)
 
-    def _backward(self, logits, *args, **kwargs):
+    def _backward(self, u, logits):
         raise NotImplementedError()
-    
-    def _build_relaxed_encoder(self, logits):
-        backward_factory = self._backward
-        with tf.name_scope('encoder'):
-            distribution = tf.distributions.Bernoulli(logits=logits)
 
-        def transform(z):
+    def _forward(self, u, logits):
+        return tf.to_float(tf.less(u, tf.sigmoid(logits)))
+
+    def _build_relaxed_encoder(self, logits):
+        with tf.name_scope('encoder'):
+            uniform = tf.distributions.Uniform(high=tf.ones_like(logits))
+
+        def transform(u):
             # forward pass: samples
             # backward pass: logits
-            forward = tf.to_float(z)
-            backward = backward_factory(logits)
+            forward = self._forward(u, logits)
+            backward = self._backward(u, logits)
             return backward + tf.stop_gradient(forward - backward)
 
-        return model_utils.TransformedSampler(distribution, transform)
+        return model_utils.TransformedSampler(uniform, transform)
 
 
 class StraightThroughDVAE(AbstractBackwardRelaxedDVAE):
     def __init__(self, *args, **kwargs):
         AbstractBackwardRelaxedDVAE.__init__(self, *args, **kwargs)
 
-    def _backward(self, logits, *args, **kwargs):
+    def _backward(self, u, logits):
         return logits
 
 
@@ -38,7 +40,7 @@ class BackwardMeanRelaxedDVAE(AbstractBackwardRelaxedDVAE):
     def __init__(self, *args, **kwargs):
         AbstractBackwardRelaxedDVAE.__init__(self, *args, **kwargs)
 
-    def _backward(self, logits, *args, **kwargs):
+    def _backward(self, u, logits):
         return tf.sigmoid(logits)
 
 
@@ -47,8 +49,6 @@ class BackwardGumbelRelaxedDVAE(AbstractBackwardRelaxedDVAE):
         self.tau = kwargs.get('tau')
         AbstractBackwardRelaxedDVAE.__init__(self, *args, **kwargs)
 
-    def _backward(self, logits, *args, **kwargs):
-        logistic = tf.contrib.distributions.Logistic(loc=logits / self.tau, scale=1. / self.tau)
-        transformation = tf.contrib.distributions.bijectors.Sigmoid()
-        distribution = tf.contrib.distributions.TransformedDistribution(logistic, bijector=transformation)
-        return distribution.sample(*args, **kwargs)
+    def _backward(self, u, logits):
+        logistic = tf.log(u) - tf.log1p(-u)
+        return tf.sigmoid((logistic + logits) / self.tau)
