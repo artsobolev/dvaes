@@ -1,13 +1,10 @@
 import tensorflow as tf
 
 import model_utils
-from abstract_dvae import AbstractDVAE
+from abstract_dvae import AbstractReparametrizedDVAE
 
 
-class AbstractBackwardRelaxedDVAE(AbstractDVAE):
-    def __init__(self, *args, **kwargs):
-        AbstractDVAE.__init__(self, *args, **kwargs)
-
+class AbstractBackwardRelaxedDVAE(AbstractReparametrizedDVAE):
     def _backward(self, u, logits):
         raise NotImplementedError()
 
@@ -29,17 +26,11 @@ class AbstractBackwardRelaxedDVAE(AbstractDVAE):
 
 
 class StraightThroughDVAE(AbstractBackwardRelaxedDVAE):
-    def __init__(self, *args, **kwargs):
-        AbstractBackwardRelaxedDVAE.__init__(self, *args, **kwargs)
-
     def _backward(self, u, logits):
         return logits
 
 
 class BackwardMeanRelaxedDVAE(AbstractBackwardRelaxedDVAE):
-    def __init__(self, *args, **kwargs):
-        AbstractBackwardRelaxedDVAE.__init__(self, *args, **kwargs)
-
     def _backward(self, u, logits):
         return tf.sigmoid(logits)
 

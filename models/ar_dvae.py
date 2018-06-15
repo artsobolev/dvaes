@@ -1,12 +1,9 @@
 import tensorflow as tf
 
-from abstract_dvae import AbstractDVAE
+from abstract_dvae import AbstractReparametrizedDVAE
 
 
-class AsymptoticallyReparametrisedDVAE(AbstractDVAE):
-    def __init__(self, *args, **kwargs):
-        AbstractDVAE.__init__(self, *args, **kwargs)
-    
+class AsymptoticallyReparametrisedDVAE(AbstractReparametrizedDVAE):
     def _build_relaxed_encoder(self, logits):
         with tf.name_scope('encoder'):        
             q = tf.sigmoid(logits)

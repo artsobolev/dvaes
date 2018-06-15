@@ -61,11 +61,15 @@ if __name__ == "__main__":
         help='Number of epochs')
 
     argparser.add_argument(
-        '--multisamples', type=int, nargs='+', default=[1, 100, 1000, 10000],
-        help='List of sample sizes for multisample ELBOs')
+        '--jackknife_samples', type=int, nargs='+', default=[1, 10, 10, 10, 100, 100, 100, 1000, 1000],
+        help='List of sample sizes for jackknife ELBOs')
 
     argparser.add_argument(
-        '--evaluate_every', type=int, nargs='+', default=[1, 3, 10, 100],
+        '--jackknife_depths', type=int, nargs='+', default=[0, 0, 1, 2, 0, 1, 2, 0, 1],
+        help='List of depths for jackknife ELBOs')
+
+    argparser.add_argument(
+        '--evaluate_every', type=int, nargs='+', default=[1, 3, 3, 3, 100, 100, 100, 200, 200],
         help='Evaluate model on ELBO every X epochs '
              '(for number for each multisample ELBO)')
 
@@ -83,7 +87,7 @@ if __name__ == "__main__":
     if args.model not in available_models:
         raise ValueError("Unknown model name: {}".format(args.model))
 
-    evaluate_every = dict(zip(args.multisamples, args.evaluate_every))
+    evaluate_every = dict(zip(zip(args.jackknife_samples, args.jackknife_depths), args.evaluate_every))
 
     model_class = getattr(models, args.model)
     dataset = utils.get_mnist_dataset()
@@ -94,9 +98,10 @@ if __name__ == "__main__":
 
         dvae = model_class(code_size=args.code_size, input_size=28*28, prior_p=args.prior_proba,
                            lam=args.lam, tau=args.tau, relaxation_distribution=args.relaxation_distribution,
-                           output_bias=output_bias, batch_size=args.batch_size, multisample_ks=args.multisamples,
-                           noise_distribution=args.noise_distribution)
+                           output_bias=output_bias, jackknife_depths=args.jackknife_depths,
+                           jackknife_samples=args.jackknife_samples, noise_distribution=args.noise_distribution)
 
         utils.train(dvae, dataset.train.images, dataset.validation.images, learning_rate=args.learning_rate,
-                    epochs_total=args.epochs, eval_batch_size=args.eval_batch_size, evaluate_every=evaluate_every,
-                    experiment_path=args.experiment_path, sess=sess, subset_validation=args.subset_validation)
+                    epochs_total=args.epochs, batch_size=args.batch_size, eval_batch_size=args.eval_batch_size,
+                    evaluate_every=evaluate_every, experiment_path=args.experiment_path,
+                    subset_validation=args.subset_validation, sess=sess)

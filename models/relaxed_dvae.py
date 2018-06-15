@@ -1,14 +1,14 @@
 import tensorflow as tf
 
 import model_utils
-from abstract_dvae import AbstractDVAE
+from abstract_dvae import AbstractReparametrizedDVAE
 
 
-class ConcretelyRelaxedDVAE(AbstractDVAE):
+class ConcretelyRelaxedDVAE(AbstractReparametrizedDVAE):
     def __init__(self, *args, **kwargs):
         self.tau = kwargs.get('tau', 1.0)
 
-        AbstractDVAE.__init__(self, *args, **kwargs)
+        AbstractReparametrizedDVAE.__init__(self, *args, **kwargs)
     
     def _build_relaxed_encoder(self, logits):
         with tf.name_scope('encoder'):
@@ -25,7 +25,7 @@ class _UniformWithQuantile(tf.distributions.Uniform):
         return p * self.range() + self.low
 
 
-class GeneralizedRelaxedDVAE(AbstractDVAE):
+class GeneralizedRelaxedDVAE(AbstractReparametrizedDVAE):
     DISTRIBUTION_FACTORIES = {
         'Uniform': lambda shape: _UniformWithQuantile(low=tf.zeros(shape), high=tf.ones(shape)),
         'Normal': lambda shape: tf.distributions.Normal(loc=tf.zeros(shape), scale=tf.ones(shape)),
@@ -35,7 +35,7 @@ class GeneralizedRelaxedDVAE(AbstractDVAE):
         self.tau = kwargs.get('tau', 1.0)
         self.distribution_factory_ = self.DISTRIBUTION_FACTORIES[relaxation_distribution]
 
-        AbstractDVAE.__init__(self, *args, **kwargs)
+        AbstractReparametrizedDVAE.__init__(self, *args, **kwargs)
 
     def _build_relaxed_encoder(self, logits):
         with tf.name_scope('encoder'):
@@ -59,7 +59,7 @@ class _TruncatedExponential:
         return tf.log1p(rho * tf.expm1(self.beta)) / self.beta
 
 
-class NoiseRelaxedDVAE(AbstractDVAE):
+class NoiseRelaxedDVAE(AbstractReparametrizedDVAE):
     NOISE_FACTORIES = {
         'Normal': lambda shape, tau: tf.distributions.Normal(loc=tf.ones(shape), scale=tau * tf.ones(shape)),
         'TruncatedExponential': lambda shape, tau: _TruncatedExponential(beta=tf.ones(shape) / tau),
@@ -71,7 +71,7 @@ class NoiseRelaxedDVAE(AbstractDVAE):
         self.tau = kwargs.get('tau', 1.0)
         self.noise_factory_ = self.NOISE_FACTORIES[noise_distribution]
 
-        AbstractDVAE.__init__(self, *args, **kwargs)
+        AbstractReparametrizedDVAE.__init__(self, *args, **kwargs)
 
     def _build_relaxed_encoder(self, logits):
         with tf.name_scope('encoder'):
